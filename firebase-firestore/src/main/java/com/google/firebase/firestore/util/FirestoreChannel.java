@@ -22,11 +22,13 @@ import com.google.firebase.firestore.auth.CredentialsProvider;
 import com.google.firebase.firestore.core.Version;
 import com.google.firebase.firestore.model.DatabaseId;
 import com.google.firebase.firestore.remote.FirestoreCallCredentials;
+import com.google.firebase.firestore.util.Logger;
 import com.google.firestore.v1beta1.FirestoreGrpc;
 import com.google.firestore.v1beta1.FirestoreGrpc.FirestoreStub;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
+import io.grpc.ConnectivityState;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
@@ -58,13 +60,41 @@ public class FirestoreChannel {
   private final CredentialsProvider credentialsProvider;
 
   /** The underlying gRPC channel. */
-  private final Channel channel;
+  private final ManagedChannel channel;
 
   /** Call options to be used when invoking RPCs. */
   private final CallOptions callOptions;
 
   /** The value to use as resource prefix header. */
   private final String resourcePrefixValue;
+
+  private class StateChangeCallback implements Runnable {
+    private ManagedChannel c;
+    public StateChangeCallback(ManagedChannel c) {
+      this.c = c;
+    }
+    public void run() {
+      ConnectivityState s = c.getState(false);
+      Logger.warn("RSG", "State changed: " + c.getState(false).name());
+      /*
+      if (c.getState(false) == ConnectivityState.TRANSIENT_FAILURE) {
+        call.cancel("Should we do this?", new RuntimeException("Probably not."));
+      }
+      */
+
+      // The callback is a 'one-time' thing, so reregister for the next one.
+      c.notifyWhenStateChanged(s, this);
+    }
+
+    /*
+    private ClientCall call = null;
+    public void setCall(ClientCall call) {
+      this.call = call;
+    }
+    */
+  }
+
+  private StateChangeCallback stateChangeCallback;
 
   public FirestoreChannel(
       AsyncQueue asyncQueue,
@@ -74,10 +104,14 @@ public class FirestoreChannel {
     this.asyncQueue = asyncQueue;
     this.credentialsProvider = credentialsProvider;
 
+    Logger.warn("RSG", "Startup state: " + grpcChannel.getState(false).name());
+    stateChangeCallback = new StateChangeCallback(grpcChannel);
+    grpcChannel.notifyWhenStateChanged(grpcChannel.getState(false), stateChangeCallback);
+
     FirestoreCallCredentials firestoreHeaders = new FirestoreCallCredentials(credentialsProvider);
     FirestoreStub firestoreStub =
         FirestoreGrpc.newStub(grpcChannel).withCallCredentials(firestoreHeaders);
-    this.channel = firestoreStub.getChannel();
+    this.channel = grpcChannel;
     this.callOptions = firestoreStub.getCallOptions();
 
     this.resourcePrefixValue =
@@ -89,11 +123,13 @@ public class FirestoreChannel {
   public <ReqT, RespT> ClientCall<ReqT, RespT> runBidiStreamingRpc(
       MethodDescriptor<ReqT, RespT> method, IncomingStreamObserver<RespT> observer) {
     ClientCall<ReqT, RespT> call = channel.newCall(method, callOptions);
+    //stateChangeCallback.setCall(call);
 
     call.start(
         new ClientCall.Listener<RespT>() {
           @Override
           public void onHeaders(Metadata headers) {
+            Logger.warn("RSG", "FirestoreChannel::runBidiStreamingRpc onHeaders");
             try {
               observer.onHeaders(headers);
             } catch (Throwable t) {
@@ -103,6 +139,7 @@ public class FirestoreChannel {
 
           @Override
           public void onMessage(RespT message) {
+            Logger.warn("RSG", "FirestoreChannel::runBidiStreamingRpc onNext");
             try {
               observer.onNext(message);
               // Make sure next message can be delivered
@@ -114,6 +151,7 @@ public class FirestoreChannel {
 
           @Override
           public void onClose(Status status, Metadata trailers) {
+            Logger.warn("RSG", "FirestoreChannel::runBidiStreamingRpc onClose. Status: " + status.toString());
             try {
               observer.onClose(status);
             } catch (Throwable t) {
@@ -123,6 +161,7 @@ public class FirestoreChannel {
 
           @Override
           public void onReady() {
+            Logger.warn("RSG", "FirestoreChannel::runBidiStreamingRpc onReady");
             try {
               observer.onReady();
             } catch (Throwable t) {
