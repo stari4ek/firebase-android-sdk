@@ -15,9 +15,9 @@
 package com.google.firebase.storage;
 
 import android.net.Uri;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.text.TextUtils;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.google.android.gms.common.internal.Preconditions;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.firebase.annotations.PublicApi;
@@ -27,7 +27,6 @@ import com.google.firebase.storage.network.NetworkRequest;
 import org.json.JSONObject;
 
 /** A Task that retrieves the download URL for a {@link StorageReference} object */
-@PublicApi
 class GetDownloadUrlTask implements Runnable {
   private static final String TAG = "GetMetadataTask";
 
@@ -44,7 +43,10 @@ class GetDownloadUrlTask implements Runnable {
 
     this.storageRef = storageRef;
     this.pendingResult = pendingResult;
-
+    if (storageRef.getRoot().getName().equals(storageRef.getName())) {
+      throw new IllegalArgumentException(
+          "getDownloadUrl() is not supported at the root of the bucket.");
+    }
     FirebaseStorage storage = this.storageRef.getStorage();
     sender =
         new ExponentialBackoffSender(
@@ -58,7 +60,7 @@ class GetDownloadUrlTask implements Runnable {
 
     if (!TextUtils.isEmpty(downloadTokens)) {
       String downloadToken = downloadTokens.split(",", -1)[0];
-      String baseURL = NetworkRequest.getdefaultURL(storageRef.getStorageUri());
+      String baseURL = NetworkRequest.getDefaultURL(storageRef.getStorageUri());
       return Uri.parse(baseURL + "?alt=media&token=" + downloadToken);
     }
 

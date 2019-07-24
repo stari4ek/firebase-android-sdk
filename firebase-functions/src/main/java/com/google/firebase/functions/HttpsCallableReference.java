@@ -14,7 +14,8 @@
 
 package com.google.firebase.functions;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
 import java.util.concurrent.TimeUnit;
 
@@ -105,6 +106,16 @@ public class HttpsCallableReference {
    */
   public void setTimeout(long timeout, TimeUnit units) {
     options.setTimeout(timeout, units);
+  }
+
+  @NonNull
+  /**
+   * Returns the timeout for calls from this instance of Functions.
+   *
+   * @return The timeout, in milliseconds.
+   */
+  public long getTimeout() {
+    return options.getTimeout();
   }
 
   /**

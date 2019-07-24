@@ -14,6 +14,7 @@
 
 package com.google.firebase.gradle.plugins.license
 
+import com.android.build.gradle.tasks.BundleAar
 import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.AnotherMITLicenseFetcher
 import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.AndroidSdkTermsFetcher
 import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.AnotherApache2LicenseFetcher
@@ -22,8 +23,10 @@ import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.BSDLicens
 import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.CreativeCommonsLicenseFetcher
 import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.GnuClasspathLicenseFetcher
 import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.MITLicenseFetcher
+import com.google.firebase.gradle.plugins.license.RemoteLicenseFetcher.YetAnotherApache2LicenseFetcher
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
 
 /**
  * Interprets the implementation config for the underlying project and generates license artifacts.
@@ -48,31 +51,30 @@ class LicenseResolverPlugin implements Plugin<Project> {
     List<RemoteLicenseFetcher> remoteLicenseFetchers =
             [new AndroidSdkTermsFetcher(),
              new Apache2LicenseFetcher(),
-             new BSDLicenseFetcher(),
              new AnotherApache2LicenseFetcher(),
+             new YetAnotherApache2LicenseFetcher(),
+             new BSDLicenseFetcher(),
              new CreativeCommonsLicenseFetcher(), new MITLicenseFetcher(), new AnotherMITLicenseFetcher(), new GnuClasspathLicenseFetcher()]
     final static ANDROID_PLUGINS = ["com.android.application", "com.android.library",
                                     "com.android.test"]
 
     @Override
     void apply(Project project) {
-        project.apply plugin: com.jaredsburrows.license.LicensePlugin
-
         ThirdPartyLicensesExtension thirdPartyLicenses =
                 project.extensions.create('thirdPartyLicenses', ThirdPartyLicensesExtension,
                         project.getRootDir())
 
-        //Configure license report plugin
-        project.licenseReport {
-            generateHtmlReport = false
-            generateJsonReport = true
-            copyHtmlReportToAssets = false
-            copyJsonReportToAssets = false
-        }
-
         project.afterEvaluate {
+            def conf = project.configurations.create('allExternalDependencies')
+            def targetConfiguration = project.plugins.hasPlugin('com.android.library') ? 'releaseRuntimeClasspath' : 'runtimeClasspath'
+
+            project.configurations.all { Configuration c ->
+                if (c.name == targetConfiguration) {
+                    conf.extendsFrom c
+                }
+            }
+
             File downloadsDir = new File("$project.buildDir/generated/downloads")
-            project.buildDir
             File licensesDir = new File("$project.buildDir/generated/third_party_licenses")
 
             DownloadLicenseTask downloadLicensesTask = project.task('downloadLicenses',
@@ -83,22 +85,15 @@ class LicenseResolverPlugin implements Plugin<Project> {
             }
 
             if (isAndroidProject(project)) {
-                def variantName = "Release"
 
-                def licensesTask = project.task("generateLicenses", type: GenerateLicensesTask) {
-                    dependsOn "license${variantName}Report", downloadLicensesTask
+                def licensesTask = project.tasks.create("generateLicenses", GenerateLicensesTask, conf).configure {
+                    dependsOn downloadLicensesTask
                     additionalLicenses = thirdPartyLicenses.getLibraries()
-                    licenseReportFile =
-                            project.file("$project.buildDir/reports/licenses/license${variantName}Report.json")
-
                     licenseDownloadDir = downloadsDir
-
                     outputDir = licensesDir
                 }
 
-                // must run before preBuild, otherwise it produces an empty license report.
-                project.tasks.getByName('preBuild').mustRunAfter licensesTask
-                project.tasks.getByName("bundle${variantName}Aar") {
+                project.tasks.withType(BundleAar) {
                     dependsOn licensesTask
                     from licensesTask.outputDir
                 }

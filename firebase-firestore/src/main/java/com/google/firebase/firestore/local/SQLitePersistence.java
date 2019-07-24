@@ -27,13 +27,18 @@ import android.database.sqlite.SQLiteOpenHelper;
 import android.database.sqlite.SQLiteProgram;
 import android.database.sqlite.SQLiteStatement;
 import android.database.sqlite.SQLiteTransactionListener;
-import android.support.annotation.VisibleForTesting;
+import androidx.annotation.VisibleForTesting;
 import com.google.common.base.Function;
+import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.FirebaseFirestoreException.Code;
 import com.google.firebase.firestore.auth.User;
 import com.google.firebase.firestore.model.DatabaseId;
 import com.google.firebase.firestore.util.Consumer;
+import com.google.firebase.firestore.util.FileUtil;
 import com.google.firebase.firestore.util.Logger;
 import com.google.firebase.firestore.util.Supplier;
+import java.io.File;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -49,7 +54,6 @@ import javax.annotation.Nullable;
  * helper routines that make dealing with SQLite much more pleasant.
  */
 public final class SQLitePersistence extends Persistence {
-
   /**
    * Creates the database name that is used to identify the database to be used with a Firestore
    * instance. Note that this needs to stay stable across releases. The database is uniquely
@@ -75,8 +79,7 @@ public final class SQLitePersistence extends Persistence {
 
   private final OpenHelper opener;
   private final LocalSerializer serializer;
-  private SQLiteDatabase db;
-  private boolean started;
+  private final StatsCollector statsCollector;
   private final SQLiteQueryCache queryCache;
   private final SQLiteIndexManager indexManager;
   private final SQLiteRemoteDocumentCache remoteDocumentCache;
@@ -97,18 +100,38 @@ public final class SQLitePersistence extends Persistence {
         public void onRollback() {}
       };
 
+  private SQLiteDatabase db;
+  private boolean started;
+
   public SQLitePersistence(
       Context context,
       String persistenceKey,
       DatabaseId databaseId,
       LocalSerializer serializer,
       LruGarbageCollector.Params params) {
+    this(
+        context,
+        persistenceKey,
+        databaseId,
+        serializer,
+        StatsCollector.NO_OP_STATS_COLLECTOR,
+        params);
+  }
+
+  public SQLitePersistence(
+      Context context,
+      String persistenceKey,
+      DatabaseId databaseId,
+      LocalSerializer serializer,
+      StatsCollector statsCollector,
+      LruGarbageCollector.Params params) {
     String databaseName = databaseName(persistenceKey, databaseId);
     this.opener = new OpenHelper(context, databaseName);
     this.serializer = serializer;
+    this.statsCollector = statsCollector;
     this.queryCache = new SQLiteQueryCache(this, this.serializer);
     this.indexManager = new SQLiteIndexManager(this);
-    this.remoteDocumentCache = new SQLiteRemoteDocumentCache(this, this.serializer);
+    this.remoteDocumentCache = new SQLiteRemoteDocumentCache(this, this.serializer, statsCollector);
     this.referenceDelegate = new SQLiteLruReferenceDelegate(this, params);
   }
 
@@ -154,7 +177,7 @@ public final class SQLitePersistence extends Persistence {
 
   @Override
   MutationQueue getMutationQueue(User user) {
-    return new SQLiteMutationQueue(this, serializer, user);
+    return new SQLiteMutationQueue(this, serializer, statsCollector, user);
   }
 
   @Override
@@ -202,6 +225,26 @@ public final class SQLitePersistence extends Persistence {
     return value;
   }
 
+  public static void clearPersistence(Context context, DatabaseId databaseId, String persistenceKey)
+      throws FirebaseFirestoreException {
+    String databaseName = SQLitePersistence.databaseName(persistenceKey, databaseId);
+    String sqLitePath = context.getDatabasePath(databaseName).getPath();
+    String journalPath = sqLitePath + "-journal";
+    String walPath = sqLitePath + "-wal";
+
+    File sqLiteFile = new File(sqLitePath);
+    File journalFile = new File(journalPath);
+    File walFile = new File(walPath);
+
+    try {
+      FileUtil.delete(sqLiteFile);
+      FileUtil.delete(journalFile);
+      FileUtil.delete(walFile);
+    } catch (IOException e) {
+      throw new FirebaseFirestoreException("Failed to clear persistence." + e, Code.UNKNOWN);
+    }
+  }
+
   long getByteSize() {
     return getPageCount() * getPageSize();
   }
@@ -209,7 +252,7 @@ public final class SQLitePersistence extends Persistence {
   /**
    * Gets the page size of the database. Typically 4096.
    *
-   * @see https://www.sqlite.org/pragma.html#pragma_page_size
+   * @see "https://www.sqlite.org/pragma.html#pragma_page_size"
    */
   private long getPageSize() {
     return query("PRAGMA page_size").firstValue(row -> row.getLong(/*column=*/ 0));
@@ -219,7 +262,7 @@ public final class SQLitePersistence extends Persistence {
    * Gets the number of pages in the database file. Multiplying this with the page size yields the
    * approximate size of the database on disk (including the WAL, if relevant).
    *
-   * @see https://www.sqlite.org/pragma.html#pragma_page_count.
+   * @see "https://www.sqlite.org/pragma.html#pragma_page_count."
    */
   private long getPageCount() {
     return query("PRAGMA page_count").firstValue(row -> row.getLong(/*column=*/ 0));
@@ -422,19 +465,17 @@ public final class SQLitePersistence extends Persistence {
      * Runs the query, calling the consumer once for each row in the results.
      *
      * @param consumer A consumer that will receive the first row.
+     * @return The number of rows processed
      */
-    void forEach(Consumer<Cursor> consumer) {
-      Cursor cursor = null;
-      try {
-        cursor = startQuery();
+    int forEach(Consumer<Cursor> consumer) {
+      int rowsProcessed = 0;
+      try (Cursor cursor = startQuery()) {
         while (cursor.moveToNext()) {
+          ++rowsProcessed;
           consumer.accept(cursor);
         }
-      } finally {
-        if (cursor != null) {
-          cursor.close();
-        }
       }
+      return rowsProcessed;
     }
 
     /**

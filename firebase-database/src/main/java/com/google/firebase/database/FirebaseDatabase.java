@@ -16,8 +16,8 @@ package com.google.firebase.database;
 
 import static com.google.android.gms.common.internal.Preconditions.checkNotNull;
 
-import android.support.annotation.NonNull;
 import android.text.TextUtils;
+import androidx.annotation.NonNull;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.annotations.PublicApi;
@@ -38,7 +38,7 @@ import com.google.firebase.database.core.utilities.Validation;
 @PublicApi
 public class FirebaseDatabase {
 
-  private static final String SDK_VERSION = "3.0.0";
+  private static final String SDK_VERSION = BuildConfig.VERSION_NAME;
 
   private final FirebaseApp app;
   private final RepoInfo repoInfo;

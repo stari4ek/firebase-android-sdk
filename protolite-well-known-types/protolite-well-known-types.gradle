@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-apply plugin: 'com.android.library'
-apply plugin: 'com.google.protobuf'
-
-ext {
-    firebaseSkipPreguard = true
+plugins {
+    id 'firebase-library'
+    id 'com.google.protobuf'
 }
+
+firebaseLibrary {
+    staticAnalysis.disableKotlinInteropLint()
+}
+
 
 protobuf {
     protoc {
@@ -61,6 +64,6 @@ android {
 
 dependencies {
     implementation 'com.google.protobuf:protobuf-lite:3.0.1'
-    protobuf 'com.google.protobuf:protobuf-java:3.5.1'
-    protobuf 'com.google.api.grpc:proto-google-common-protos:1.11.0'
+    protobuf 'com.google.protobuf:protobuf-java:3.6.1'
+    protobuf 'com.google.api.grpc:proto-google-common-protos:1.12.0'
 }

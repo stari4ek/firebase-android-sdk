@@ -14,9 +14,11 @@
 
 package com.google.android.datatransport.runtime.scheduling.persistence;
 
-import android.support.annotation.Nullable;
-import android.support.annotation.WorkerThread;
+import androidx.annotation.Nullable;
+import androidx.annotation.WorkerThread;
 import com.google.android.datatransport.runtime.EventInternal;
+import com.google.android.datatransport.runtime.TransportContext;
+import java.io.Closeable;
 
 /**
  * Persistence layer.
@@ -24,10 +26,11 @@ import com.google.android.datatransport.runtime.EventInternal;
  * <p>Responsible for storing events and backend-specific metadata.
  */
 @WorkerThread
-public interface EventStore {
+public interface EventStore extends Closeable {
 
   /** Persist a new event. */
-  PersistedEvent persist(String backendName, EventInternal event);
+  @Nullable
+  PersistedEvent persist(TransportContext transportContext, EventInternal event);
 
   /** Communicate to the store that events have failed to get sent. */
   void recordFailure(Iterable<PersistedEvent> events);
@@ -35,16 +38,18 @@ public interface EventStore {
   /** Communicate to the store that events have been sent successfully. */
   void recordSuccess(Iterable<PersistedEvent> events);
 
-  /** Returns the timestamp when the backend is allowed to be called next time or null. */
-  @Nullable
-  Long getNextCallTime(String backendName);
+  /** Returns the timestamp when the backend is allowed to be called next time or zero. */
+  long getNextCallTime(TransportContext transportContext);
 
   /** Record the timestamp when the backend is allowed to be called next time. */
-  void recordNextCallTime(String backendName, long timestampMs);
+  void recordNextCallTime(TransportContext transportContext, long timestampMs);
 
   /** Returns true if the store contains any pending events for a give backend. */
-  boolean hasPendingEventsFor(String backendName);
+  boolean hasPendingEventsFor(TransportContext transportContext);
 
   /** Load all pending events for a given backend. */
-  Iterable<PersistedEvent> loadAll(String backendName);
+  Iterable<PersistedEvent> loadBatch(TransportContext transportContext);
+
+  /** Remove events that have been stored for more than 7 days. */
+  int cleanUp();
 }

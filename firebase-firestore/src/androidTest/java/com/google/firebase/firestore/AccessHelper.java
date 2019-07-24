@@ -31,9 +31,16 @@ public final class AccessHelper {
       String persistenceKey,
       CredentialsProvider credentialsProvider,
       AsyncQueue asyncQueue,
-      FirebaseApp firebaseApp) {
+      FirebaseApp firebaseApp,
+      FirebaseFirestore.InstanceRegistry instanceRegistry) {
     return new FirebaseFirestore(
-        context, databaseId, persistenceKey, credentialsProvider, asyncQueue, firebaseApp);
+        context,
+        databaseId,
+        persistenceKey,
+        credentialsProvider,
+        asyncQueue,
+        firebaseApp,
+        instanceRegistry);
   }
 
   /** Makes the shutdown method accessible. */
@@ -43,5 +50,9 @@ public final class AccessHelper {
 
   public static AsyncQueue getAsyncQueue(FirebaseFirestore firestore) {
     return firestore.getAsyncQueue();
+  }
+
+  public static Task<Void> clearPersistence(FirebaseFirestore firestore) {
+    return firestore.clearPersistence();
   }
 }

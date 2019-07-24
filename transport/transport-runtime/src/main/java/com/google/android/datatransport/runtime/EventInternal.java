@@ -14,7 +14,7 @@
 
 package com.google.android.datatransport.runtime;
 
-import com.google.android.datatransport.Priority;
+import androidx.annotation.Nullable;
 import com.google.auto.value.AutoValue;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,12 +22,12 @@ import java.util.Map;
 
 @AutoValue
 public abstract class EventInternal {
-  // send source
   public abstract String getTransportName();
 
-  public abstract byte[] getPayload();
+  @Nullable
+  public abstract Integer getCode();
 
-  public abstract Priority getPriority();
+  public abstract byte[] getPayload();
 
   public abstract long getEventMillis();
 
@@ -39,11 +39,31 @@ public abstract class EventInternal {
     return Collections.unmodifiableMap(getAutoMetadata());
   }
 
+  public final String getOrDefault(String key, String defaultValue) {
+    String value = getAutoMetadata().get(key);
+    return value == null ? defaultValue : value;
+  }
+
+  public final int getInteger(String key) {
+    String value = getAutoMetadata().get(key);
+    return value == null ? 0 : Integer.valueOf(value);
+  }
+
+  public final long getLong(String key) {
+    String value = getAutoMetadata().get(key);
+    return value == null ? 0L : Long.valueOf(value);
+  }
+
+  public final String get(String key) {
+    String value = getAutoMetadata().get(key);
+    return value == null ? "" : value;
+  }
+
   public Builder toBuilder() {
     return new AutoValue_EventInternal.Builder()
         .setTransportName(getTransportName())
+        .setCode(getCode())
         .setPayload(getPayload())
-        .setPriority(getPriority())
         .setEventMillis(getEventMillis())
         .setUptimeMillis(getUptimeMillis())
         .setAutoMetadata(new HashMap<>(getAutoMetadata()));
@@ -57,9 +77,9 @@ public abstract class EventInternal {
   public abstract static class Builder {
     public abstract Builder setTransportName(String value);
 
-    public abstract Builder setPayload(byte[] value);
+    public abstract Builder setCode(Integer value);
 
-    public abstract Builder setPriority(Priority value);
+    public abstract Builder setPayload(byte[] value);
 
     public abstract Builder setEventMillis(long value);
 
@@ -71,6 +91,16 @@ public abstract class EventInternal {
 
     public final Builder addMetadata(String key, String value) {
       getAutoMetadata().put(key, value);
+      return this;
+    }
+
+    public final Builder addMetadata(String key, long value) {
+      getAutoMetadata().put(key, String.valueOf(value));
+      return this;
+    }
+
+    public final Builder addMetadata(String key, int value) {
+      getAutoMetadata().put(key, String.valueOf(value));
       return this;
     }
 

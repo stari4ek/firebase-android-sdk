@@ -20,16 +20,15 @@ import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.util.Log;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.google.android.gms.common.internal.Preconditions;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.firebase.FirebaseApp;
-import com.google.firebase.storage.BuildConfig;
 import com.google.firebase.storage.StorageException;
-import com.google.firebase.storage.internal.SlashUtil;
+import com.google.firebase.storage.internal.Slashes;
 import com.google.firebase.storage.network.connection.HttpURLConnectionFactory;
 import com.google.firebase.storage.network.connection.HttpURLConnectionFactoryImpl;
 import java.io.BufferedOutputStream;
@@ -111,7 +110,7 @@ public abstract class NetworkRequest {
    * @return Url for the target REST call in string form.
    */
   @NonNull
-  public static String getdefaultURL(@NonNull Uri gsUri) {
+  public static String getDefaultURL(@NonNull Uri gsUri) {
     Preconditions.checkNotNull(gsUri);
 
     String pathWithoutBucket = getPathWithoutBucket(gsUri);
@@ -119,7 +118,7 @@ public abstract class NetworkRequest {
         + "/b/"
         + gsUri.getAuthority()
         + "/o/"
-        + (pathWithoutBucket != null ? SlashUtil.unSlashize(pathWithoutBucket) : "");
+        + (pathWithoutBucket != null ? Slashes.unSlashize(pathWithoutBucket) : "");
   }
 
   /**
@@ -138,6 +137,16 @@ public abstract class NetworkRequest {
     return path;
   }
 
+  /**
+   * Returns the path of the object but excludes the bucket name
+   *
+   * @return the path in string form.
+   */
+  @Nullable
+  public String getPathWithoutBucket() {
+    return getPathWithoutBucket(mGsUri);
+  }
+
   @NonNull
   protected abstract String getAction();
 
@@ -148,17 +157,7 @@ public abstract class NetworkRequest {
    */
   @NonNull
   protected String getURL() {
-    return getdefaultURL(mGsUri);
-  }
-
-  /**
-   * Returns the path of the object but excludes the bucket name
-   *
-   * @return the path in string form.
-   */
-  @Nullable
-  public String getPathWithoutBucket() {
-    return getPathWithoutBucket(mGsUri);
+    return getDefaultURL(mGsUri);
   }
 
   /**
@@ -419,22 +418,6 @@ public abstract class NetworkRequest {
     }
   }
 
-  private void processResponseStream() throws IOException {
-    if (isResultSuccess()) {
-      parseSuccessulResponse(resultInputStream);
-    } else {
-      parseErrorResponse(resultInputStream);
-    }
-  }
-
-  protected void parseSuccessulResponse(@Nullable InputStream resultStream) throws IOException {
-    parseResponse(resultStream);
-  }
-
-  protected void parseErrorResponse(@Nullable InputStream resultStream) throws IOException {
-    parseResponse(resultStream);
-  }
-
   @SuppressWarnings("TryFinallyCanBeTryWithResources")
   private void parseResponse(@Nullable InputStream resultStream) throws IOException {
     StringBuilder sb = new StringBuilder();
@@ -454,6 +437,22 @@ public abstract class NetworkRequest {
     if (!isResultSuccess()) {
       mException = new IOException(rawStringResponse);
     }
+  }
+
+  private void processResponseStream() throws IOException {
+    if (isResultSuccess()) {
+      parseSuccessulResponse(resultInputStream);
+    } else {
+      parseErrorResponse(resultInputStream);
+    }
+  }
+
+  protected void parseSuccessulResponse(@Nullable InputStream resultStream) throws IOException {
+    parseResponse(resultStream);
+  }
+
+  protected void parseErrorResponse(@Nullable InputStream resultStream) throws IOException {
+    parseResponse(resultStream);
   }
 
   @Nullable
@@ -513,10 +512,6 @@ public abstract class NetworkRequest {
       throws UnsupportedEncodingException {
     if (keys == null || keys.size() == 0) {
       return null;
-    }
-
-    if (BuildConfig.DEBUG && (values == null || values.size() != keys.size())) {
-      throw new AssertionError("invalid key/value pairing");
     }
 
     StringBuilder result = new StringBuilder();

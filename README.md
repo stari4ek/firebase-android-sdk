@@ -4,12 +4,19 @@ This repository contains a subset of the Firebase Android SDK source. It
 currently includes the following Firebase libraries, and some of their
 dependencies:
 
+  * `firebase-abt`
   * `firebase-common`
+  * `firebase-common-ktx`
   * `firebase-database`
-  * `firebase-functions`
+  * `firebase-database-collection`
+  * `firebase-datatransport`
   * `firebase-firestore`
-  * `firebase-storage`
+  * `firebase-firestore-ktx`
+  * `firebase-functions`
+  * `firebase-functions-ktx`
   * `firebase-inappmessaging-display`
+  * `firebase-remote-config`
+  * `firebase-storage`
   
 
 Firebase is an app development platform with tools to help you build, grow and
@@ -220,7 +227,9 @@ projects may be published as follows.
 
 Code in this repo is formatted with the google-java-format tool. You can enable
 this formatting in Android Studio by downloading and installing the
-[google-java-format plugin](https://plugins.jetbrains.com/plugin/8527-google-java-format).
+[google-java-format plugin](https://github.com/google/google-java-format).
+The plugin is disabled by default, but the repo contains configuration information
+and links to additional plugins.
 
 To run formatting on your entire project you can run
 ```bash

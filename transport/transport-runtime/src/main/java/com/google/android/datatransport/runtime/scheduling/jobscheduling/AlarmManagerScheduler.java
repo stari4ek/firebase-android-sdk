@@ -1,4 +1,4 @@
-// Copyright 2018 Google LLC
+// Copyright 2019 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,29 +14,82 @@
 
 package com.google.android.datatransport.runtime.scheduling.jobscheduling;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import androidx.annotation.VisibleForTesting;
+import com.google.android.datatransport.runtime.TransportContext;
 import com.google.android.datatransport.runtime.scheduling.persistence.EventStore;
-import com.google.android.datatransport.runtime.time.Clock;
-import javax.inject.Inject;
 
 /**
- * Schedules the AlarmManager service based on the backendname. Used for Api levels 20 and below.
+ * Schedules the service {@link AlarmManagerSchedulerBroadcastReceiver} based on the backendname.
+ * Used for Apis 20 and below.
  */
 public class AlarmManagerScheduler implements WorkScheduler {
+  static final String ATTEMPT_NUMBER = "attemptNumber";
+  static final String BACKEND_NAME = "backendName";
+  static final String EVENT_PRIORITY = "priority";
 
   private final Context context;
 
   private final EventStore eventStore;
 
-  private final Clock clock;
+  private AlarmManager alarmManager;
 
-  @Inject
-  public AlarmManagerScheduler(Context applicationContext, EventStore eventStore, Clock clock) {
-    this.context = applicationContext;
-    this.eventStore = eventStore;
-    this.clock = clock;
+  private final SchedulerConfig config;
+
+  public AlarmManagerScheduler(
+      Context applicationContext, EventStore eventStore, SchedulerConfig config) {
+    this(
+        applicationContext,
+        eventStore,
+        (AlarmManager) applicationContext.getSystemService(Context.ALARM_SERVICE),
+        config);
   }
 
+  @VisibleForTesting
+  AlarmManagerScheduler(
+      Context applicationContext,
+      EventStore eventStore,
+      AlarmManager alarmManager,
+      SchedulerConfig config) {
+    this.context = applicationContext;
+    this.eventStore = eventStore;
+    this.alarmManager = alarmManager;
+    this.config = config;
+  }
+
+  @VisibleForTesting
+  boolean isJobServiceOn(Intent intent) {
+    return (PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_NO_CREATE) != null);
+  }
+
+  /**
+   * Schedules the AlarmManager service.
+   *
+   * @param transportContext Contains information about the backend and the priority.
+   * @param attemptNumber Number of times the AlarmManager has tried to log for this backend.
+   */
   @Override
-  public void schedule(String backendName, int attemptNumber) {}
+  public void schedule(TransportContext transportContext, int attemptNumber) {
+    Uri.Builder intentDataBuilder = new Uri.Builder();
+    intentDataBuilder.appendQueryParameter(BACKEND_NAME, transportContext.getBackendName());
+    intentDataBuilder.appendQueryParameter(
+        EVENT_PRIORITY, String.valueOf(transportContext.getPriority().ordinal()));
+    Intent intent = new Intent(context, AlarmManagerSchedulerBroadcastReceiver.class);
+    intent.setData(intentDataBuilder.build());
+    intent.putExtra(ATTEMPT_NUMBER, attemptNumber);
+
+    if (isJobServiceOn(intent)) return;
+
+    long backendTime = eventStore.getNextCallTime(transportContext);
+
+    PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, intent, 0);
+    this.alarmManager.set(
+        AlarmManager.ELAPSED_REALTIME,
+        config.getScheduleDelay(transportContext.getPriority(), backendTime, attemptNumber),
+        pendingIntent);
+  }
 }

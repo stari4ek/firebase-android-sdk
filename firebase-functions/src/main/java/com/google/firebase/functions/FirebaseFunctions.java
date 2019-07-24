@@ -16,9 +16,10 @@ package com.google.firebase.functions;
 
 import android.content.Context;
 import android.os.Handler;
-import android.support.annotation.Nullable;
-import android.support.annotation.VisibleForTesting;
 import android.util.Log;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import com.google.android.gms.common.internal.Preconditions;
 import com.google.android.gms.security.ProviderInstaller;
 import com.google.android.gms.security.ProviderInstaller.ProviderInstallListener;
@@ -187,7 +188,8 @@ public class FirebaseFunctions {
    *
    * @param origin The origin of the local emulator, such as "http://10.0.2.2:5005".
    */
-  public void useFunctionsEmulator(String origin) {
+  public void useFunctionsEmulator(@NonNull String origin) {
+    Preconditions.checkNotNull(origin, "origin cannot be null");
     urlFormat = origin + "/%2$s/%1$s/%3$s";
   }
 
@@ -221,10 +223,11 @@ public class FirebaseFunctions {
    * @return A Task that will be completed when the request is complete.
    */
   private Task<HttpsCallableResult> call(
-      String name, @Nullable Object data, HttpsCallableContext context, HttpsCallOptions options) {
-    if (name == null) {
-      throw new IllegalArgumentException("name cannot be null");
-    }
+      @NonNull String name,
+      @Nullable Object data,
+      HttpsCallableContext context,
+      HttpsCallOptions options) {
+    Preconditions.checkNotNull(name, "name cannot be null");
     URL url = getURL(name);
 
     Map<String, Object> body = new HashMap<>();

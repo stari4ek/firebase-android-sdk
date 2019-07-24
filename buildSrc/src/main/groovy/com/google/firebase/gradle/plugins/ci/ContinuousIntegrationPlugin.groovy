@@ -45,21 +45,21 @@ class ContinuousIntegrationPlugin implements Plugin<Project> {
             def deviceCheckDependents = it.task('deviceCheckDependents')
 
             configurations.all {
-                if (it.name == 'debugUnitTestRuntimeClasspath') {
+                if (it.name == 'releaseUnitTestRuntimeClasspath') {
                     checkDependents.dependsOn(configurations
-                            .debugUnitTestRuntimeClasspath.getTaskDependencyFromProjectDependency(
+                            .releaseUnitTestRuntimeClasspath.getTaskDependencyFromProjectDependency(
                             false, "checkDependents"))
                     checkDependents.dependsOn 'check'
                 }
 
-                if (it.name == 'debugAndroidTestRuntimeClasspath') {
+                if (it.name == 'releaseAndroidTestRuntimeClasspath') {
                     connectedCheckDependents.dependsOn(configurations
-                            .debugAndroidTestRuntimeClasspath.getTaskDependencyFromProjectDependency(
+                            .releaseAndroidTestRuntimeClasspath.getTaskDependencyFromProjectDependency(
                             false, "connectedCheckDependents"))
                     connectedCheckDependents.dependsOn 'connectedCheck'
 
                     deviceCheckDependents.dependsOn(configurations
-                            .debugAndroidTestRuntimeClasspath.getTaskDependencyFromProjectDependency(
+                            .releaseAndroidTestRuntimeClasspath.getTaskDependencyFromProjectDependency(
                             false, "deviceCheckDependents"))
                     deviceCheckDependents.dependsOn 'deviceCheck'
                 }
@@ -82,8 +82,8 @@ class ContinuousIntegrationPlugin implements Plugin<Project> {
                 // getTaskDependencyFromProjectDependency works.
                 if (!isAndroidProject(it)) {
                     configurations {
-                        debugUnitTestRuntimeClasspath
-                        debugAndroidTestRuntimeClasspath
+                        releaseUnitTestRuntimeClasspath
+                        releaseAndroidTestRuntimeClasspath
                         annotationProcessor
                     }
                     // noop task to avoid having to handle the edge-case of tasks not being
@@ -97,7 +97,6 @@ class ContinuousIntegrationPlugin implements Plugin<Project> {
 
         def affectedProjects = AffectedProjectFinder.builder()
                 .project(project)
-                .changedPaths(changedPaths(project.rootDir))
                 .ignorePaths(extension.ignorePaths)
                 .build()
                 .find()
@@ -141,13 +140,6 @@ class ContinuousIntegrationPlugin implements Plugin<Project> {
                 }
             }
         }
-    }
-
-    private static Set<String> changedPaths(File workDir) {
-        return 'git diff --name-only --submodule=diff HEAD@{0} HEAD@{1}'
-                .execute([], workDir)
-                .text
-                .readLines()
     }
 
     private static final ANDROID_PLUGINS = ["com.android.application", "com.android.library",

@@ -15,11 +15,11 @@
 package com.google.firebase.storage.network;
 
 import android.net.Uri;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.text.TextUtils;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.google.firebase.FirebaseApp;
-import com.google.firebase.storage.internal.SlashUtil;
+import com.google.firebase.storage.internal.Slashes;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
@@ -66,7 +66,7 @@ public class ResumableUploadStartRequest extends ResumableNetworkRequest {
 
     String pathWithoutBucket = getPathWithoutBucket();
     keys.add("name");
-    values.add(pathWithoutBucket != null ? SlashUtil.unSlashize(pathWithoutBucket) : "");
+    values.add(pathWithoutBucket != null ? Slashes.unSlashize(pathWithoutBucket) : "");
     keys.add("uploadType");
     values.add("resumable");
     return getPostDataString(keys, values, false);

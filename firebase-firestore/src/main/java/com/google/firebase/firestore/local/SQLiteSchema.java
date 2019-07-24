@@ -21,9 +21,9 @@ import android.database.Cursor;
 import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteStatement;
-import android.support.annotation.VisibleForTesting;
 import android.text.TextUtils;
 import android.util.Log;
+import androidx.annotation.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.firebase.firestore.model.ResourcePath;
 import com.google.firebase.firestore.util.Consumer;
@@ -45,10 +45,27 @@ class SQLiteSchema {
   /**
    * The version of the schema. Increase this by one for each migration added to runMigrations
    * below.
+   *
+   * <p>TODO(index-free): The migration to schema version 9 doesn't backfill `update_time` as this
+   * requires rewriting the RemoteDocumentCache. For index-free queries to efficiently handle
+   * existing documents, we still need to populate update_time for all existing entries, drop the
+   * RemoteDocumentCache or ask users to invoke `clearPersistence()` manually. If we decide to
+   * backfill or drop the contents of the RemoteDocumentCache, we need to perform an additional
+   * schema migration.
    */
-  static final int VERSION = 8;
+  static final int VERSION = 9;
+
   // Remove this constant and increment VERSION to enable indexing support
   static final int INDEXING_SUPPORT_VERSION = VERSION + 1;
+
+  /**
+   * The batch size for the sequence number migration in `ensureSequenceNumbers()`.
+   *
+   * <p>This addresses https://github.com/firebase/firebase-android-sdk/issues/370, where a customer
+   * reported that schema migrations failed for clients with thousands of documents. The number has
+   * been chosen based on manual experiments.
+   */
+  private static final int SEQUENCE_NUMBER_BATCH_SIZE = 100;
 
   private final SQLiteDatabase db;
 
@@ -116,6 +133,10 @@ class SQLiteSchema {
 
     if (fromVersion < 8 && toVersion >= 8) {
       createV8CollectionParentsIndex();
+    }
+
+    if (fromVersion < 9 && toVersion >= 9) {
+      addUpdateTime();
     }
 
     /*
@@ -342,6 +363,16 @@ class SQLiteSchema {
     }
   }
 
+  private void addUpdateTime() {
+    if (!tableContainsColumn("remote_documents", "update_time_seconds")) {
+      hardAssert(
+          !tableContainsColumn("remote_documents", "update_time_nanos"),
+          "Table contained update_time_seconds, but is missing update_time_nanos");
+      db.execSQL("ALTER TABLE remote_documents ADD COLUMN update_time_seconds INTEGER");
+      db.execSQL("ALTER TABLE remote_documents ADD COLUMN update_time_nanos INTEGER");
+    }
+  }
+
   /**
    * Ensures that each entry in the remote document cache has a corresponding sentinel row. Any
    * entries that lack a sentinel row are given one with the sequence number set to the highest
@@ -359,17 +390,30 @@ class SQLiteSchema {
     SQLiteStatement tagDocument =
         db.compileStatement(
             "INSERT INTO target_documents (target_id, path, sequence_number) VALUES (0, ?, ?)");
+
     SQLitePersistence.Query untaggedDocumentsQuery =
         new SQLitePersistence.Query(
-            db,
-            "SELECT RD.path FROM remote_documents AS RD WHERE NOT EXISTS (SELECT TD.path FROM target_documents AS TD WHERE RD.path = TD.path AND TD.target_id = 0)");
-    untaggedDocumentsQuery.forEach(
-        row -> {
-          tagDocument.clearBindings();
-          tagDocument.bindString(1, row.getString(0));
-          tagDocument.bindLong(2, sequenceNumber);
-          hardAssert(tagDocument.executeInsert() != -1, "Failed to insert a sentinel row");
-        });
+                db,
+                "SELECT RD.path FROM remote_documents AS RD WHERE NOT EXISTS ("
+                    + "SELECT TD.path FROM target_documents AS TD "
+                    + "WHERE RD.path = TD.path AND TD.target_id = 0"
+                    + ") LIMIT ?")
+            .binding(SEQUENCE_NUMBER_BATCH_SIZE);
+
+    boolean[] resultsRemaining = new boolean[1];
+
+    do {
+      resultsRemaining[0] = false;
+
+      untaggedDocumentsQuery.forEach(
+          row -> {
+            resultsRemaining[0] = true;
+            tagDocument.clearBindings();
+            tagDocument.bindString(1, row.getString(0));
+            tagDocument.bindLong(2, sequenceNumber);
+            hardAssert(tagDocument.executeInsert() != -1, "Failed to insert a sentinel row");
+          });
+    } while (resultsRemaining[0]);
   }
 
   private void createV8CollectionParentsIndex() {

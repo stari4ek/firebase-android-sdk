@@ -16,10 +16,10 @@ package com.google.firebase.storage.internal;
 
 import android.net.Uri;
 import android.os.RemoteException;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.util.Log;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.google.android.gms.common.internal.Objects;
 import com.google.android.gms.common.internal.Preconditions;
 import com.google.android.gms.tasks.Task;
@@ -95,7 +95,7 @@ public class Util {
     String bucket;
     String encodedPath;
     if (trimmedInput.startsWith("gs://")) {
-      String fullUri = SlashUtil.preserveSlashEncode(SlashUtil.normalizeSlashes(s.substring(5)));
+      String fullUri = Slashes.preserveSlashEncode(Slashes.normalizeSlashes(s.substring(5)));
       return Uri.parse("gs://" + fullUri);
     } else {
       Uri uri = Uri.parse(s);
@@ -111,7 +111,7 @@ public class Util {
           throw new UnsupportedEncodingException(
               "Could not parse Url because the Storage network layer did not load");
         }
-        encodedPath = SlashUtil.slashize(uri.getEncodedPath());
+        encodedPath = Slashes.slashize(uri.getEncodedPath());
         if (indexOfAuth == 0 && encodedPath.startsWith("/")) {
           int firstBSlash = encodedPath.indexOf("/b/", 0); // /v0/b/bucket.storage
           // .firebase.com/o/child/image.png
